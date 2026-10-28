@@ -1,0 +1,18 @@
+# macOS
+.DS_Store
+._*
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Editors
+.vscode/
+.idea/
+
+# Local timesheets, backups and logs (never commit personal data)
+*.xlsx
+.daybook-backups/
+*.log

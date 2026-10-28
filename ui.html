@@ -1,0 +1,570 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Daybook</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Figtree:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a working ledger. Log on the left, today's timesheet row pinned on the right; a second view is the month's sheet in the exact column order of the work timesheet. */
+:root{
+  --paper:#F1F4EE; --card:#FFFFFF; --ink:#17201A; --muted:#5D6A60; --line:#D6DDD2;
+  --leaf:#3B7A36; --leaf-ink:#FFFFFF; --leaf-soft:#E1EEDB; --sun:#D9781F; --sun-soft:#FBE7D2;
+  --amber:#B7791F; --amber-soft:#F8EED9; --danger:#B4412F;
+  --head:#6AA84F; --head-ink:#0F1A0D;
+  --f-display:"Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
+  --f-body:"Figtree", "Segoe UI", system-ui, sans-serif;
+  --f-mono:"JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --paper:#111612; --card:#1A201B; --ink:#E5ECE2; --muted:#97A496; --line:#2C362D;
+  --leaf:#7DBB6E; --leaf-ink:#0E170C; --leaf-soft:#1E2D1B; --sun:#F0A055; --sun-soft:#3A2916;
+  --amber:#E2B05A; --amber-soft:#33291A; --danger:#E7826F; --head:#4F8A3B; --head-ink:#F2F8EF; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --paper:#111612; --card:#1A201B; --ink:#E5ECE2; --muted:#97A496; --line:#2C362D;
+  --leaf:#7DBB6E; --leaf-ink:#0E170C; --leaf-soft:#1E2D1B; --sun:#F0A055; --sun-soft:#3A2916;
+  --amber:#E2B05A; --amber-soft:#33291A; --danger:#E7826F; --head:#4F8A3B; --head-ink:#F2F8EF; color-scheme:dark}
+*{box-sizing:border-box}
+html{color-scheme:light}
+[hidden]{display:none!important}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.5;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0 48px}
+.app{max-width:1180px;margin:0 auto}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--leaf);outline-offset:2px}
+.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+
+/* top bar */
+.top{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;padding-block:20px 14px}
+.brand{display:flex;align-items:baseline;gap:10px}
+.brand h1{font-family:var(--f-display);font-weight:700;font-size:26px;letter-spacing:-.02em;margin:0}
+.brand span{color:var(--muted);font-size:13px}
+.tabs{display:flex;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:3px}
+.tabs button{border:0;background:none;padding:7px 16px;border-radius:999px;font-weight:600;font-size:14px;color:var(--muted)}
+.tabs button[aria-selected="true"]{background:var(--ink);color:var(--paper)}
+
+/* day nav + week */
+.daynav{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-block:6px 12px}
+.daynav h2{font-family:var(--f-display);font-weight:700;font-size:clamp(22px,4vw,32px);letter-spacing:-.02em;margin:0;text-wrap:balance}
+.daynav .sub{color:var(--muted);font-size:14px}
+.iconbtn{width:34px;height:34px;border-radius:50%;border:1px solid var(--line);background:var(--card);display:grid;place-items:center;font-size:16px}
+.ghost{border:1px solid var(--line);background:var(--card);border-radius:8px;padding:6px 12px;font-weight:600;font-size:13px}
+.week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;margin-bottom:18px}
+.wday{border:1px solid var(--line);background:var(--card);border-radius:10px;padding:7px 4px 8px;text-align:center;display:grid;gap:2px;justify-items:center}
+.wday .w{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.wday .n{font-family:var(--f-display);font-weight:700;font-size:18px;line-height:1.1}
+.wday .dot{width:7px;height:7px;border-radius:50%;background:transparent;border:1.5px solid var(--line)}
+.wday.logged .dot{border-color:var(--amber);background:var(--amber)}
+.wday.filled .dot{border-color:var(--leaf);background:var(--leaf)}
+.wday.sun{background:var(--sun-soft)}
+.wday.sel{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+.wday.future{opacity:.55}
+
+.grid{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:20px;align-items:start}
+@media (max-width:880px){.grid{grid-template-columns:minmax(0,1fr)}}
+
+/* composer */
+.composer{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;display:grid;gap:10px}
+.composer textarea{width:100%;min-height:76px;resize:vertical;border:0;background:transparent;font-size:16px;line-height:1.5;outline:none}
+.composer .row{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.hints{display:flex;gap:6px;flex-wrap:wrap}
+.hint{border:1px dashed var(--line);background:none;border-radius:999px;padding:3px 10px;font-size:12.5px;color:var(--muted)}
+.primary{background:var(--leaf);color:var(--leaf-ink);border:0;border-radius:9px;padding:9px 16px;font-weight:600}
+.primary:disabled{opacity:.5;cursor:default}
+.kbd{font-size:12px;color:var(--muted)}
+
+/* groups */
+.groups{display:grid;gap:22px;margin-top:22px}
+.group h3{font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);margin:0 0 8px;display:flex;gap:8px;align-items:center}
+.group h3 .count{font-family:var(--f-mono);font-size:11px;background:var(--line);color:var(--ink);border-radius:6px;padding:0 6px;letter-spacing:0}
+.items{display:grid;gap:0;border-top:1px solid var(--line)}
+.item{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:start;padding:10px 2px;border-bottom:1px solid var(--line)}
+.mark{width:20px;height:20px;border-radius:6px;margin-top:2px;display:grid;place-items:center;font-size:12px;border:1.5px solid var(--line);background:var(--card)}
+.k-done .mark{background:var(--leaf);border-color:var(--leaf);color:var(--leaf-ink)}
+.k-doing .mark{border-color:var(--amber);background:var(--amber-soft);color:var(--amber)}
+.k-plan .mark{border-color:var(--muted)}
+.k-plan .mark:hover{border-color:var(--leaf);background:var(--leaf-soft)}
+.k-note .mark{border-radius:50%;width:10px;height:10px;margin:7px 5px 0;background:var(--muted);border:0}
+.item .txt{min-width:0;overflow-wrap:anywhere}
+.item .meta{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;font-size:12.5px;color:var(--muted);align-items:center}
+.tag{font-family:var(--f-mono);font-size:11.5px;border:1px solid var(--line);border-radius:5px;padding:0 6px;color:var(--ink);text-decoration:none;background:var(--paper)}
+a.tag:hover{border-color:var(--leaf)}
+.tag.time{background:var(--leaf-soft);border-color:transparent}
+.tag.remark{background:var(--amber-soft);border-color:transparent;font-family:var(--f-body)}
+.acts{display:flex;gap:4px;align-items:center}
+.acts select{border:1px solid var(--line);background:var(--card);border-radius:6px;font-size:12px;padding:2px 4px;color:var(--muted)}
+.del{border:0;background:none;color:var(--muted);font-size:16px;line-height:1;padding:2px 6px;border-radius:6px}
+.del:hover{color:var(--danger);background:var(--paper)}
+.pending .txt{color:var(--muted)}
+.pending .meta::before{content:"Organising…";color:var(--amber);font-weight:600}
+.empty{border:1px dashed var(--line);border-radius:14px;padding:22px;color:var(--muted);text-align:left}
+.empty b{color:var(--ink)}
+details.raw{margin-top:6px;color:var(--muted);font-size:13.5px}
+details.raw summary{cursor:pointer;font-weight:600}
+details.raw ol{padding-left:18px;display:grid;gap:6px;margin:10px 0 0}
+details.raw .t{font-family:var(--f-mono);font-size:12px;margin-right:6px}
+
+/* side: timesheet row */
+.side{display:grid;gap:16px;position:sticky;top:calc(env(safe-area-inset-top,0px) + 12px)}
+@media (max-width:880px){.side{position:static}}
+.rowcard{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.rowcard .hd{background:var(--head);color:var(--head-ink);padding:10px 14px;display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.rowcard .hd b{font-family:var(--f-display);font-size:16px}
+.rowcard .hd span{font-family:var(--f-mono);font-size:12.5px}
+.rowcard .bd{padding:12px 14px 14px;display:grid;gap:10px}
+.status{font-size:12.5px;color:var(--muted);display:flex;gap:6px;align-items:center}
+.status i{width:8px;height:8px;border-radius:50%;background:var(--amber);flex:none}
+.status.ok i{background:var(--leaf)}
+.fld{display:grid;gap:3px}
+.fld label{font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.fld input,.fld select,.fld textarea{width:100%;border:1px solid var(--line);background:var(--paper);border-radius:8px;padding:7px 9px;font-size:14px}
+.fld textarea{min-height:64px;resize:vertical}
+.fld ::placeholder{color:var(--muted);opacity:.8;font-style:italic}
+.three{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.hrs{border:1px solid var(--line);border-radius:8px;padding:7px 9px;background:var(--leaf-soft);font-family:var(--f-mono);font-size:14px;min-height:37px}
+.rowcard .ft{display:flex;gap:8px;justify-content:space-between;align-items:center;flex-wrap:wrap}
+.carry{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+.carry h4{margin:0 0 6px;font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+.carry .c{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;padding:8px 0;border-top:1px solid var(--line);font-size:14px;align-items:center}
+.carry .c small{display:block;color:var(--muted);font-family:var(--f-mono);font-size:11.5px}
+.carry .c div{min-width:0;overflow-wrap:anywhere}
+.mini{border:1px solid var(--line);background:var(--paper);border-radius:6px;padding:3px 8px;font-size:12px;font-weight:600;white-space:nowrap}
+
+/* timesheet view */
+.toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:end;justify-content:space-between;margin-block:6px 14px}
+.toolbar .l,.toolbar .r{display:flex;gap:8px;flex-wrap:wrap;align-items:end}
+.toolbar .fld{min-width:140px}
+.tablewrap{overflow-x:auto;background:var(--card);border:1px solid var(--line);border-radius:12px}
+table.sheet{border-collapse:collapse;min-width:1040px;width:100%;font-size:13.5px}
+.sheet th{background:var(--head);color:var(--head-ink);font-family:Georgia,"Times New Roman",serif;font-weight:700;font-size:14px;text-align:center;padding:8px;border:1px solid color-mix(in srgb,var(--head) 70%,#000);white-space:nowrap}
+.sheet td{border:1px solid var(--line);padding:6px 8px;vertical-align:top}
+.sheet td.task,.sheet td.rem{white-space:pre-wrap;min-width:220px;max-width:340px;overflow-wrap:anywhere}
+.sheet tr{cursor:pointer}
+.sheet tr:hover td{background:var(--leaf-soft)}
+.sheet tr.sun td:not(.mode){background:var(--sun-soft)}
+.sheet tr.pend td.task,.sheet tr.pend td.rem{color:var(--muted);font-style:italic}
+.sheet td.d{font-family:var(--f-mono);white-space:nowrap}
+.sheet td.t{font-family:var(--f-mono);text-align:center;white-space:nowrap}
+.legend{display:flex;gap:14px;flex-wrap:wrap;color:var(--muted);font-size:12.5px;margin-top:10px}
+.legend span{display:flex;align-items:center;gap:6px}
+.sw{width:12px;height:12px;border-radius:3px;display:inline-block;border:1px solid var(--line)}
+
+#toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--paper);padding:9px 16px;border-radius:10px;font-size:14px;z-index:20;max-width:calc(100vw - 32px)}
+.banner{background:var(--amber-soft);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:14px;font-size:14px}
+@media (max-width:520px){.three{grid-template-columns:1fr 1fr}.three .fld:last-child{grid-column:span 2}.brand span{display:none}}
+@media (prefers-reduced-motion:no-preference){.item{animation:in .25s ease-out}@keyframes in{from{transform:translateY(3px)}to{transform:none}}}
+</style>
+<style>
+a.ghost{color:var(--ink);display:inline-flex;align-items:center}
+a.primary{color:var(--leaf-ink);display:inline-flex;align-items:center}
+.statusbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.pill{display:inline-flex;gap:6px;align-items:center;border:1px solid var(--line);background:var(--card);border-radius:999px;padding:4px 10px;font-size:12.5px;color:var(--muted)}
+.pill i{width:7px;height:7px;border-radius:50%;background:var(--leaf)}
+.pill.warn i{background:var(--amber)}
+.pill.bad i{background:var(--danger)}
+.gear{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:6px 12px;font-weight:600;font-size:13px}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:16px;display:grid;gap:12px}
+.panel h3{margin:0;font-family:var(--f-display);font-size:18px}
+.panel .two{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr) minmax(0,1fr);gap:10px}
+@media (max-width:700px){.panel .two{grid-template-columns:1fr}}
+.panel p{margin:0;color:var(--muted);font-size:13.5px}
+.panel code{font-family:var(--f-mono);font-size:12.5px;background:var(--paper);border:1px solid var(--line);border-radius:5px;padding:1px 5px;overflow-wrap:anywhere}
+.files{display:flex;gap:6px;flex-wrap:wrap}
+.xl{font-size:12.5px;color:var(--muted)}
+.xl.ok{color:var(--leaf)}
+.xl.bad{color:var(--danger)}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="brand"><h1>Daybook</h1><span id="tagline">Write it down. The timesheet fills itself.</span></div>
+    <div class="statusbar">
+      <span class="pill" id="claudePill"><i></i><span>Checking Claude…</span></span>
+      <div class="tabs" role="tablist">
+        <button id="tab-log" role="tab" aria-selected="true">Log</button>
+        <button id="tab-sheet" role="tab" aria-selected="false">Timesheet</button>
+      </div>
+      <button class="gear" id="gear" aria-expanded="false">Settings</button>
+    </div>
+  </header>
+
+  <div id="banner" class="banner" hidden></div>
+
+  <section class="panel" id="settings" hidden>
+    <h3>Settings for this Mac account</h3>
+    <div class="two">
+      <div class="fld"><label for="s-folder">Timesheet folder</label><input id="s-folder" placeholder="~/Daybook/Timesheets"></div>
+      <div class="fld"><label for="s-time">Daily fill time</label><input type="time" id="s-time"></div>
+      <div class="fld"><label for="s-mode">Default mode</label><select id="s-mode"><option>WFH</option><option>WFO</option><option>Other</option></select></div>
+    </div>
+    <p>Put each month's timesheet (.xlsx) in this folder. Daybook finds the row by its date and fills it. If no file has that date, it makes a <code>Daybook_Timesheet_YYYY-MM.xlsx</code> in your layout. Keep the folder outside Documents, Desktop and Downloads so macOS lets the 4 AM fill reach it.</p>
+    <div class="files" id="s-files"></div>
+    <div class="fld"><label for="s-claude">Claude Code command (leave blank to find it automatically)</label><input id="s-claude" placeholder="/Users/you/.local/bin/claude"></div>
+    <p id="s-claudeinfo"></p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="primary" id="s-save">Save settings</button>
+      <button class="ghost" id="s-test">Test Claude</button>
+      <button class="ghost" id="s-open">Open folder in Finder</button>
+    </div>
+  </section>
+
+  <section id="view-log">
+    <div class="daynav">
+      <button class="iconbtn" id="prev" aria-label="Previous day">‹</button>
+      <button class="iconbtn" id="next" aria-label="Next day">›</button>
+      <div><h2 id="dayTitle">Today</h2><div class="sub mono" id="daySub"></div></div>
+      <button class="ghost" id="goToday" hidden>Back to today</button>
+    </div>
+    <div class="week" id="week"></div>
+
+    <div class="grid">
+      <div class="main">
+        <form class="composer" id="composer">
+          <label for="note" class="kbd" id="noteLabel">What are you working on?</label>
+          <textarea id="note" placeholder="started 10:15, wfh. working on lead scoring feature PROJ-214"></textarea>
+          <div class="row">
+            <div class="hints" id="hints">
+              <button type="button" class="hint">started 10:00 wfh</button>
+              <button type="button" class="hint">done: </button>
+              <button type="button" class="hint">will do: </button>
+              <button type="button" class="hint">blocked on </button>
+              <button type="button" class="hint">logged off at 19:30</button>
+            </div>
+            <div style="display:flex;gap:10px;align-items:center"><span class="kbd">Enter to add · Shift+Enter for new line</span><button class="primary" id="addBtn" type="submit">Add</button></div>
+          </div>
+        </form>
+        <div class="groups" id="groups"></div>
+      </div>
+      <aside class="side">
+        <div class="rowcard" id="rowcard"></div>
+        <div class="carry" id="carry" hidden></div>
+      </aside>
+    </div>
+  </section>
+
+  <section id="view-sheet" hidden>
+    <div class="toolbar">
+      <div class="l">
+        <div class="fld"><label for="from">From</label><input type="date" id="from"></div>
+        <div class="fld"><label for="to">To</label><input type="date" id="to"></div>
+        <button class="ghost" id="thisMonth">This month</button>
+        <button class="ghost" id="lastMonth">Last month</button>
+      </div>
+      <div class="r">
+        <button class="ghost" id="copyRows">Copy rows</button>
+        <a class="ghost" id="dlCsv" href="#" style="text-decoration:none">Download CSV</a>
+        <a class="primary" id="dlXlsx" href="#" style="text-decoration:none">Download Excel</a>
+      </div>
+    </div>
+    <div class="tablewrap"><table class="sheet" id="sheet"></table></div>
+    <div class="legend">
+      <span><i class="sw" style="background:var(--sun-soft)"></i>Sunday</span>
+      <span><em>Grey italic</em> = preview from your log, not filled yet</span>
+      <span>Click any row to open that day.</span>
+    </div>
+  </section>
+  <div id="toast" hidden></div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const KIND_LABEL = {done:"Done", doing:"In progress", plan:"Planned", note:"Notes & blockers"};
+const KIND_ORDER = ["doing","plan","done","note"];
+const MODES = ["WFH","WFO","Leave","Holiday","Other"];
+const HEAD = ["Date","Task Description/Feature link","WFO/WFH/Other","Start Time","End Time","Total Working Hours","Remarks / Comments","Approval (Y/N)","Additional Comments"];
+const WD = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+const WDL = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+
+const pad = n => String(n).padStart(2,"0");
+const keyOf = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const fromKey = k => { const [y,m,d] = k.split("-").map(Number); return new Date(y,m-1,d); };
+const addDays = (k,n) => { const d = fromKey(k); d.setDate(d.getDate()+n); return keyOf(d); };
+const dmy = k => { const [y,m,d] = k.split("-"); return `${d}/${m}/${y}`; };
+const dow = k => fromKey(k).getDay();
+const validKey = k => typeof k === "string" && /^\d{4}-\d{2}-\d{2}$/.test(k);
+const workday = () => { const n = new Date(); if (n.getHours() < 4) n.setDate(n.getDate()-1); return keyOf(n); };
+const hhmm = iso => { const d = new Date(iso); return isNaN(d) ? "" : `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const toMin = t => { const m = /^(\d{1,2}):(\d{2})$/.exec(t || ""); return m ? (+m[1])*60 + (+m[2]) : null; };
+function hours(s,e){ const a = toMin(s), b = toMin(e); if (a == null || b == null) return ""; let d = b - a; if (d <= 0) d += 1440; return `${Math.floor(d/60)}:${pad(d%60)}`; }
+
+const days = new Map();
+let status = {};
+let viewDate = workday();
+let loaded = false;
+
+function toast(msg){ const t = $("#toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast.h); toast.h = setTimeout(() => t.hidden = true, 2800); }
+
+async function api(path, body){
+  const r = await fetch(path, body ? {method:"POST", headers:{"Content-Type":"application/json","X-Daybook":"1"}, body: JSON.stringify(body)} : {});
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || `Request failed (${r.status})`);
+  return j;
+}
+function rangeNeeded(){
+  let a = addDays(viewDate, -15), b = addDays(viewDate, 7);
+  if (!$("#view-sheet").hidden) { const k = rangeKeys(); if (k.length) { if (k[0] < a) a = k[0]; if (k.at(-1) > b) b = k.at(-1); } }
+  return [a, b];
+}
+async function refresh(){
+  const [a, b] = rangeNeeded();
+  try {
+    const j = await api(`/api/days?from=${a}&to=${b}`);
+    for (const k of [...days.keys()]) if (k >= a && k <= b && !j.days[k]) days.delete(k);
+    for (const [k, d] of Object.entries(j.days)) days.set(k, d);
+    status = j.status; loaded = true; $("#banner").hidden = true;
+    render();
+  } catch (e) {
+    $("#banner").hidden = false;
+    $("#banner").textContent = /app icon/.test(e.message) ? e.message : "Daybook isn't responding. Open it again from the app icon.";
+  }
+}
+function schedule(){
+  clearTimeout(schedule.h);
+  const pending = [...days.values()].some(d => (d.entries||[]).some(e => e.status === "pending")) || refresh.fast > 0;
+  if (refresh.fast > 0) refresh.fast--;
+  schedule.h = setTimeout(async () => { await refresh(); schedule(); }, pending ? 2000 : 20000);
+}
+function soon(n = 15){ refresh.fast = n; refresh().then(schedule); }
+
+/* ---------- actions ---------- */
+async function act(path, body, msg){ try { await api(path, body); if (msg) toast(msg); soon(); } catch (e) { toast(e.message); } }
+
+/* ---------- local preview of a timesheet row ---------- */
+function localCompile(day){
+  const items = (day?.entries||[]).flatMap(e => e.items||[]);
+  const work = items.filter(i => i.kind === "done" || i.kind === "doing");
+  const task = work.map(i => [i.summary, ...(i.links||[]).filter(l => !i.summary.includes(l))].filter(Boolean).join(" ")).filter(Boolean).join("\n");
+  const modes = items.map(i => i.mode).filter(Boolean);
+  const starts = items.map(i => i.start).filter(Boolean).sort();
+  const ends = items.map(i => i.end).filter(Boolean);
+  return {task, remarks: items.map(i => i.remark).filter(Boolean).join("; "), mode: modes.at(-1) || status.defaultMode || "WFH", start: starts[0] || "", end: ends.at(-1) || "", additional: ""};
+}
+
+/* ---------- rendering: log ---------- */
+function linkTag(l){
+  return /^https?:\/\//.test(l)
+    ? `<a class="tag" href="${esc(l)}" target="_blank" rel="noopener">${esc(l.replace(/^https?:\/\/(www\.)?/,"").slice(0,42))}</a>`
+    : `<span class="tag">${esc(l)}</span>`;
+}
+function renderStatus(){
+  const p = $("#claudePill");
+  if (!loaded) return;
+  p.className = "pill" + (status.claude ? "" : " warn");
+  p.querySelector("span").textContent = status.claude ? "Claude Code connected" : "Claude Code not found · using simple rules";
+  const fh = (status.fillTime || "04:07");
+  $("#tagline").textContent = `Write it down. The timesheet fills itself at ${fh}.`;
+}
+function renderHeader(){
+  const today = workday();
+  const rel = viewDate === today ? "Today" : viewDate === addDays(today,-1) ? "Yesterday" : viewDate === addDays(today,1) ? "Tomorrow" : WDL[dow(viewDate)];
+  $("#dayTitle").textContent = rel;
+  $("#daySub").textContent = `${WDL[dow(viewDate)]} · ${dmy(viewDate)}`;
+  $("#goToday").hidden = viewDate === today;
+  $("#noteLabel").textContent = viewDate === today ? "What are you working on?" : viewDate > today ? `Plans for ${dmy(viewDate)}` : `Add to ${dmy(viewDate)}`;
+  const d0 = fromKey(viewDate); const mon = addDays(viewDate, -((d0.getDay()+6)%7));
+  let h = "";
+  for (let i = 0; i < 7; i++) {
+    const k = addDays(mon, i), d = days.get(k);
+    const cls = ["wday", dow(k)===0 && "sun", k===viewDate && "sel", k>today && "future", d?.sheet?.filledAt ? "filled" : d?.entries?.length && "logged"].filter(Boolean).join(" ");
+    h += `<button class="${cls}" data-day="${k}" title="${dmy(k)}"><span class="w">${WD[dow(k)]}</span><span class="n">${fromKey(k).getDate()}</span><span class="dot"></span></button>`;
+  }
+  $("#week").innerHTML = h;
+}
+function renderGroups(){
+  const d = days.get(viewDate);
+  const entries = d?.entries || [];
+  if (!loaded) { $("#groups").innerHTML = `<div class="empty">Loading your log…</div>`; return; }
+  if (!entries.length) {
+    $("#groups").innerHTML = `<div class="empty"><b>Nothing logged for ${dmy(viewDate)} yet.</b><br>Type the way you'd text a colleague: "started 10:20 wfh", "done: fixed the EOI score bug PROJ-212", "tomorrow will review Ravi's PR", "standup + client call 3–4", "logged off 19:45". Each note gets sorted into Done, In progress, Planned and Notes, and becomes the timesheet row the next morning.</div>`;
+    return;
+  }
+  const groups = {done:[], doing:[], plan:[], note:[]};
+  const pending = [];
+  for (const e of entries) {
+    if (e.status === "pending") { pending.push(e); continue; }
+    for (const it of e.items||[]) groups[it.kind]?.push({e, it});
+  }
+  let h = "";
+  if (pending.length) h += `<div class="group"><div class="items">${pending.map(e => `<div class="item pending k-note"><span class="mark"></span><div class="txt">${esc(e.text)}<div class="meta"></div></div><span></span></div>`).join("")}</div></div>`;
+  for (const k of KIND_ORDER) {
+    const list = groups[k]; if (!list.length) continue;
+    h += `<div class="group"><h3>${KIND_LABEL[k]} <span class="count">${list.length}</span></h3><div class="items">`;
+    for (const {e, it} of list) {
+      const mark = k === "done" ? "✓" : k === "doing" ? "•" : "";
+      const markEl = k === "plan" ? `<button class="mark" data-act="check" data-id="${esc(it.id)}" aria-label="Mark done" title="Mark done"></button>` : `<span class="mark">${mark}</span>`;
+      const meta = [
+        `<span class="mono">${hhmm(e.at)}</span>`,
+        it.start && `<span class="tag time">Start ${esc(it.start)}</span>`,
+        it.end && `<span class="tag time">End ${esc(it.end)}</span>`,
+        it.mode && `<span class="tag">${esc(it.mode)}</span>`,
+        ...(it.links||[]).map(linkTag),
+        it.remark && `<span class="tag remark">${esc(it.remark)}</span>`,
+        e.carriedFrom && `<span>from ${dmy(e.carriedFrom)}</span>`,
+        e.movedFrom && `<span>written on ${dmy(e.movedFrom)}</span>`,
+      ].filter(Boolean).join("");
+      const summary = it.summary || (it.start ? "Started work" : it.end ? "Ended work" : e.text);
+      h += `<div class="item k-${k}">${markEl}<div class="txt" title="${esc(e.text)}">${esc(summary)}<div class="meta">${meta}</div></div>
+        <div class="acts"><select data-act="kind" data-id="${esc(it.id)}" aria-label="Change type">${["done","doing","plan","note"].map(o => `<option value="${o}"${o===k?" selected":""}>${KIND_LABEL[o].split(" ")[0]}</option>`).join("")}</select>
+        <button class="del" data-act="del" data-id="${esc(it.id)}" aria-label="Delete">×</button></div></div>`;
+    }
+    h += `</div></div>`;
+  }
+  h += `<details class="raw"><summary>What you wrote (${entries.length})</summary><ol>${entries.map(e => `<li><span class="t">${hhmm(e.at)}</span>${esc(e.text)}</li>`).join("")}</ol></details>`;
+  $("#groups").innerHTML = h;
+}
+function renderRowCard(){
+  const card = $("#rowcard");
+  if (card.contains(document.activeElement) && document.activeElement.matches("input,textarea,select")) return;
+  const d = days.get(viewDate), s = d?.sheet || {}, p = localCompile(d);
+  const filled = !!s.filledAt;
+  const ft = status.fillTime || "04:07";
+  const nextDay = addDays(viewDate,1);
+  const status1 = filled
+    ? `<div class="status ok"><i></i>Filled ${s.filledBy === "schedule" ? "automatically" : "by you"} · ${hhmm(s.filledAt)} ${dmy(keyOf(new Date(s.filledAt)))}${(s.editedFields||[]).length ? " · your edits kept" : ""}</div>`
+    : `<div class="status"><i></i>${viewDate < workday() ? "Fills on the next run (within a minute or two)" : `Fills at ${ft}, ${WD[dow(nextDay)]} ${dmy(nextDay)}`}. Grey text is the preview.</div>`;
+  const x = s.excel;
+  const xl = x ? `<div class="xl ${x.status === "ok" ? "ok" : x.status === "error" ? "bad" : ""}">${x.status === "ok" ? `Written to ${esc(x.file)}` : esc(x.note || x.status)}${x.status === "ok" && x.note ? ` · ${esc(x.note)}` : ""}</div>` : "";
+  const v = f => esc(s[f] ?? "");
+  const ph = f => esc(filled ? "" : p[f] ?? "");
+  const st = s.start || "", en = s.end || "";
+  card.innerHTML = `<div class="hd"><b>Timesheet row</b><span>${dmy(viewDate)}</span></div>
+  <div class="bd">${status1}${xl}
+    <div class="fld"><label for="f-task">Task Description / Feature link</label><textarea id="f-task" data-f="task" placeholder="${ph("task")}">${v("task")}</textarea></div>
+    <div class="three">
+      <div class="fld"><label for="f-start">Start</label><input type="time" id="f-start" data-f="start" value="${esc(st)}"></div>
+      <div class="fld"><label for="f-end">End</label><input type="time" id="f-end" data-f="end" value="${esc(en)}"></div>
+      <div class="fld"><label>Hours</label><div class="hrs" id="f-hrs">${esc(hours(st || (!filled && p.start), en || (!filled && p.end)) || "—")}</div></div>
+    </div>
+    <div class="fld"><label for="f-mode">WFO / WFH / Other</label><select id="f-mode" data-f="mode">${["",...MODES].map(m => `<option value="${m}"${(s.mode||"")===m?" selected":""}>${m || (filled ? "—" : `${p.mode} (preview)`)}</option>`).join("")}</select></div>
+    <div class="fld"><label for="f-remarks">Remarks / Comments</label><textarea id="f-remarks" data-f="remarks" placeholder="${ph("remarks")}">${v("remarks")}</textarea></div>
+    <div class="fld"><label for="f-additional">Additional Comments</label><input id="f-additional" data-f="additional" value="${v("additional")}"></div>
+    <div class="ft"><span class="kbd">Edits you make here are never overwritten.</span><button class="ghost" id="fillBtn">${filled ? "Refill from log" : "Fill now"}</button></div>
+  </div>`;
+}
+function renderCarry(){
+  const today = workday(); const box = $("#carry");
+  if (viewDate !== today) { box.hidden = true; return; }
+  const open = [];
+  for (let i = 1; i <= 14; i++) {
+    const k = addDays(today, -i), d = days.get(k);
+    for (const e of d?.entries||[]) for (const it of e.items||[]) if (it.kind === "plan" || it.kind === "doing") open.push({k, it});
+  }
+  if (!open.length) { box.hidden = true; return; }
+  box.hidden = false;
+  box.innerHTML = `<h4>Still open from earlier</h4>` + open.slice(0,12).map(({k,it}) => `<div class="c"><div>${esc(it.summary)}<small>${KIND_LABEL[it.kind]} · ${WD[dow(k)]} ${dmy(k)}</small></div>
+    <div style="display:flex;gap:4px"><button class="mini" data-act="done" data-day="${k}" data-id="${esc(it.id)}">Done today</button><button class="mini" data-act="drop" data-day="${k}" data-id="${esc(it.id)}">Drop</button></div></div>`).join("");
+}
+
+/* ---------- rendering: sheet ---------- */
+function rowValues(key){
+  const d = days.get(key), s = d?.sheet || {}, filled = !!s.filledAt;
+  const p = !filled && d?.entries?.length ? localCompile(d) : {};
+  const g = f => s[f] || p[f] || "";
+  const st = g("start"), en = g("end");
+  return {pending: !filled && !!d?.entries?.length, vals: [dmy(key), g("task"), g("mode") || status.defaultMode || "WFH", st, en, s.hours || hours(st,en), g("remarks"), s.approval || "", g("additional")]};
+}
+function rangeKeys(){
+  let a = $("#from").value, b = $("#to").value;
+  if (!validKey(a) || !validKey(b)) return [];
+  if (a > b) [a,b] = [b,a];
+  const out = []; for (let k = a; k <= b && out.length < 400; k = addDays(k,1)) out.push(k);
+  return out;
+}
+function setMonth(offset){
+  const t = fromKey(workday()); const f = new Date(t.getFullYear(), t.getMonth()+offset, 1); const l = new Date(t.getFullYear(), t.getMonth()+offset+1, 0);
+  $("#from").value = keyOf(f); $("#to").value = keyOf(l); onRange();
+}
+function onRange(){ const k = rangeKeys(); if (k.length) { $("#dlXlsx").href = `/export.xlsx?from=${k[0]}&to=${k.at(-1)}`; $("#dlCsv").href = `/export.csv?from=${k[0]}&to=${k.at(-1)}`; } renderSheet(); if (!$("#view-sheet").hidden) refresh(); }
+function renderSheet(){
+  const keys = rangeKeys();
+  let h = `<thead><tr>${HEAD.map(x => `<th>${esc(x)}</th>`).join("")}</tr></thead><tbody>`;
+  for (const k of keys) {
+    const {pending, vals} = rowValues(k);
+    h += `<tr data-day="${k}" class="${[dow(k)===0 && "sun", pending && "pend"].filter(Boolean).join(" ")}">
+      <td class="d">${vals[0]}</td><td class="task">${esc(vals[1])}</td><td class="mode">${esc(vals[2])}</td><td class="t">${esc(vals[3])}</td><td class="t">${esc(vals[4])}</td><td class="t">${esc(vals[5])}</td><td class="rem">${esc(vals[6])}</td><td class="t">${esc(vals[7])}</td><td>${esc(vals[8])}</td></tr>`;
+  }
+  $("#sheet").innerHTML = h + "</tbody>";
+}
+function copyRows(){
+  const q = v => /[\t\n"]/.test(v) ? `"${String(v).replaceAll('"','""')}"` : v;
+  const tsv = rangeKeys().map(k => rowValues(k).vals.map(q).join("\t")).join("\n");
+  navigator.clipboard.writeText(tsv).then(() => toast("Rows copied. Paste into column A of your sheet."), () => toast("Copy was blocked. Use Download Excel instead."));
+}
+
+/* ---------- settings ---------- */
+function fillSettings(){
+  $("#s-folder").value = status.folder || "";
+  $("#s-time").value = status.fillTime || "04:07";
+  $("#s-mode").value = status.defaultMode || "WFH";
+  $("#s-claude").value = "";
+  $("#s-claude").placeholder = status.claudePath || "Not found. Install Claude Code, then sign in by running: claude";
+  $("#s-claudeinfo").textContent = status.claude ? `Using ${status.claudePath} with this Mac account's Claude login.` : "Claude Code isn't installed for this Mac account (or isn't signed in). Notes are sorted with simple rules until it is.";
+  $("#s-files").innerHTML = (status.files||[]).length ? status.files.map(f => `<span class="tag">${esc(f)}</span>`).join("") : `<span class="xl">No .xlsx files in the folder yet.</span>`;
+}
+
+function render(){
+  renderStatus(); renderHeader(); renderGroups(); renderRowCard(); renderCarry();
+  if (!$("#view-sheet").hidden) renderSheet();
+}
+
+/* ---------- events ---------- */
+function showTab(which){
+  $("#tab-log").setAttribute("aria-selected", which === "log"); $("#tab-sheet").setAttribute("aria-selected", which === "sheet");
+  $("#view-log").hidden = which !== "log"; $("#view-sheet").hidden = which !== "sheet";
+  if (which === "sheet") { renderSheet(); refresh(); }
+}
+$("#tab-log").onclick = () => showTab("log");
+$("#tab-sheet").onclick = () => showTab("sheet");
+$("#gear").onclick = () => { const p = $("#settings"); p.hidden = !p.hidden; $("#gear").setAttribute("aria-expanded", !p.hidden); if (!p.hidden) fillSettings(); };
+$("#s-save").onclick = async () => {
+  const body = {folder: $("#s-folder").value, fill_time: $("#s-time").value, default_mode: $("#s-mode").value};
+  if ($("#s-claude").value.trim()) body.claude_path = $("#s-claude").value.trim();
+  try { status = await api("/api/settings", body); fillSettings(); render(); toast("Settings saved"); } catch (e) { toast(e.message); }
+};
+$("#s-test").onclick = async () => {
+  const b = $("#s-test"); b.disabled = true; b.textContent = "Testing…";
+  try { const r = await api("/api/test-claude", {}); toast(r.ok ? "Claude Code works with this account." : `Claude Code didn't answer: ${r.error || "no reply"}`); refresh().then(fillSettings); }
+  catch (e) { toast(e.message); } finally { b.disabled = false; b.textContent = "Test Claude"; }
+};
+$("#s-open").onclick = () => act("/api/open-folder", {});
+$("#prev").onclick = () => { viewDate = addDays(viewDate,-1); render(); refresh(); };
+$("#next").onclick = () => { viewDate = addDays(viewDate,1); render(); refresh(); };
+$("#goToday").onclick = () => { viewDate = workday(); render(); refresh(); };
+$("#week").onclick = e => { const b = e.target.closest("[data-day]"); if (b) { viewDate = b.dataset.day; render(); refresh(); } };
+$("#hints").onclick = e => { const b = e.target.closest(".hint"); if (!b) return; const t = $("#note"); t.value = (t.value ? t.value.trimEnd() + " " : "") + b.textContent; t.focus(); };
+$("#note").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); $("#composer").requestSubmit(); } });
+$("#composer").addEventListener("submit", async e => {
+  e.preventDefault(); const t = $("#note"); const text = t.value.trim(); if (!text) return;
+  t.value = "";
+  try { await api("/api/note", {date: viewDate, text}); soon(); } catch (err) { t.value = text; toast(err.message); }
+});
+$("#groups").addEventListener("click", e => {
+  const b = e.target.closest("[data-act]"); if (!b || b.tagName === "SELECT") return;
+  if (b.dataset.act === "check") act("/api/item", {date: viewDate, id: b.dataset.id, kind: "done"});
+  if (b.dataset.act === "del") act("/api/item", {date: viewDate, id: b.dataset.id, delete: true});
+});
+$("#groups").addEventListener("change", e => { const s = e.target.closest('select[data-act="kind"]'); if (s) act("/api/item", {date: viewDate, id: s.dataset.id, kind: s.value}); });
+$("#carry").addEventListener("click", e => { const b = e.target.closest("[data-act]"); if (b) act("/api/carry", {date: b.dataset.day, id: b.dataset.id, action: b.dataset.act}, b.dataset.act === "done" ? "Marked done today" : ""); });
+$("#rowcard").addEventListener("change", e => {
+  const el = e.target.closest("[data-f]"); if (!el) return;
+  if (el.dataset.f === "start" || el.dataset.f === "end") $("#f-hrs").textContent = hours($("#f-start").value, $("#f-end").value) || "—";
+  act("/api/sheet", {date: viewDate, field: el.dataset.f, value: el.value}).then(() => el.blur());
+});
+$("#rowcard").addEventListener("click", e => { if (e.target.id === "fillBtn") { e.target.disabled = true; e.target.textContent = "Filling…"; act("/api/fill", {date: viewDate}, "Filling the row. This takes a few seconds."); } });
+$("#from").onchange = onRange; $("#to").onchange = onRange;
+$("#thisMonth").onclick = () => setMonth(0); $("#lastMonth").onclick = () => setMonth(-1);
+$("#sheet").addEventListener("click", e => { const tr = e.target.closest("tr[data-day]"); if (tr) { viewDate = tr.dataset.day; showTab("log"); render(); refresh(); } });
+$("#copyRows").onclick = copyRows;
+document.addEventListener("visibilitychange", () => { if (!document.hidden) soon(3); });
+
+setMonth(0);
+render();
+refresh().then(schedule);
+</script>
+</body>
+</html>
